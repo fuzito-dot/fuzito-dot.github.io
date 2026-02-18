@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>フェイクニュース見抜きクイズ</title>
+    <style>
+        :root {
+            --primary-color: #4a90e2;
+            --bg-color: #f4f7f6;
+            --card-bg: #ffffff;
+            --text-color: #333;
+        }
+
+        body {
+            font-family: "Helvetica Neue", Arial, "Hiragino Kaku Gothic ProN", "Hiragino Sans", Meiryo, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+
+        .container {
+            background-color: var(--card-bg);
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            width: 100%;
+            max-width: 600px;
+            padding: 30px;
+            text-align: center;
+        }
+
+        h1 {
+            font-size: 1.5rem;
+            color: var(--primary-color);
+            margin-bottom: 20px;
+        }
+
+        .level-badge {
+            display: inline-block;
+            background-color: #ffeb3b;
+            color: #333;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: bold;
+            margin-bottom: 15px;
+        }
+
+        #question {
+            font-size: 1.3rem;
+            font-weight: bold;
+            margin-bottom: 30px;
+            line-height: 1.6;
+        }
+
+        #choices {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        .choice-btn {
+            background-color: #fff;
+            border: 2px solid var(--primary-color);
+            color: var(--primary-color);
+            padding: 15px;
+            border-radius: 8px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .choice-btn:hover {
+            background-color: var(--primary-color);
+            color: #fff;
+        }
+
+        /* 回答後のスタイル */
+        .choice-btn.correct {
+            background-color: #4caf50;
+            border-color: #4caf50;
+            color: white;
+        }
+        .choice-btn.wrong {
+            background-color: #f44336;
+            border-color: #f44336;
+            color: white;
+        }
+
+        #explanation-area {
+            margin-top: 25px;
+            text-align: left;
+            background-color: #f9f9f9;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 5px solid var(--primary-color);
+            display: none; /* 初期は非表示 */
+        }
+
+        #explanation-area h3 {
+            margin-top: 0;
+            font-size: 1.1rem;
+        }
+
+        #explanation-area ul {
+            padding-left: 20px;
+        }
+
+        #nextBtn {
+            margin-top: 20px;
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 1rem;
+            cursor: pointer;
+            display: none;
+        }
+
+        #nextBtn:hover {
+            opacity: 0.9;
+        }
+
+        .result-score {
+            font-size: 2rem;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>🔍 フェイクニュース見抜きクイズ</h1>
+    
+    <!-- 問題表示エリア -->
+    <div id="quiz-area">
+        <div id="level" class="level-badge">レベル ★</div>
+        <h2 id="question">問題文がここに入ります</h2>
+        
+        <div id="choices">
+            <!-- ボタンが JS で生成されます -->
+        </div>
+
+        <!-- 解説エリア -->
+        <div id="explanation-area">
+            <h3 id="result-title">正解！</h3>
+            <p id="explanation-text">解説文</p>
+            <h4>💡 考えるポイント</h4>
+            <ul id="points-list"></ul>
+        </div>
+
+        <button id="nextBtn">次へ進む</button>
+    </div>
+
+    <!-- 結果表示エリア（初期は非表示） -->
+    <div id="result-area" style="display: none;">
+        <h2>クイズ終了！</h2>
+        <p>あなたのスコアは</p>
+        <div class="result-score"><span id="final-score">0</span> / <span id="total-questions">0</span></div>
+        <p id="comment"></p>
+        <button id="restartBtn" onclick="location.reload()">もう一度挑戦する</button>
+    </div>
+</div>
+
+<script>
+    // ① データ構造（問題セット）
+    const questions = [
+        {
+            level: "レベル ★",
+            text: "「今日の給食がカレーからラーメンに変更になったらしい！」",
+            choices: ["本当", "ウソ", "わからない（保留）"],
+            answer: 1, // ウソ
+            explanation: "学校の給食は事前に献立表が配られています。正式な連絡なしに突然変更されることは考えにくいです。誰からの情報か確認しましょう。",
+            points: [
+                "公式の連絡はあった？",
+                "誰が言っていた？（噂は信憑性が低い）",
+                "急な変更はあり得る？"
+            ]
+        },
+        {
+            level: "レベル ★",
+            text: "「〇〇先生が UFO を見たって！」",
+            choices: ["本当", "ウソ", "わからない（保留）"],
+            answer: 2, // わからない（保留）
+            explanation: "本人が言ったのか、証拠があるのか不明な段階では「保留」が正解です。すぐウソと決めつけるのも、信じるのも危険です。",
+            points: [
+                "本人が直接言った？",
+                "写真や動画などの証拠はある？",
+                "写真は合成の可能性はない？"
+            ]
+        },
+        {
+            level: "レベル ★★",
+            text: "「市内の小学生は来月から宿題がなくなることが決定！」",
+            choices: ["本当", "ウソ", "わからない（保留）"],
+            answer: 1, // ウソ
+            explanation: "大きな決定は、市の公式HPや学校の正式なお手紙で発表されます。まずは公式情報を探す癖をつけましょう。",
+            points: [
+                "どこが発表した？",
+                "市の公式 HP に載っている？",
+                "校長先生からの話はあった？"
+            ]
+        },
+        {
+            level: "レベル ★★",
+            text: "「このお菓子を食べると病気になるらしい！拡散希望！」",
+            choices: ["本当", "あやしい（ウソの可能性大）", "わからない（保留）"],
+            answer: 1, // ウソ
+            explanation: "「拡散希望」や強い言葉を使って不安を煽る情報は、フェイクニュースの可能性が高いです。出典を確認しましょう。",
+            points: [
+                "出典（ソース）は明確？",
+                "「拡散希望」は要注意ワード",
+                "極端な表現を使っていない？"
+            ]
+        },
+        {
+            level: "レベル ★★★",
+            text: "「90％の人がこのゲームを面白いと答えました！」",
+            choices: ["本当", "ウソ", "判断できない"],
+            answer: 2, // 判断できない
+            explanation: "数字は具体的に見えますが、肝心な「何人中の 90％なのか」が書かれていません。10 人中 9 人かもしれません。",
+            points: [
+                "何人に聞いた調査？",
+                "それ、かたよった人にだけ聞いてない?",
+                "いつ調べたデータ？"
+            ]
+        },
+        {
+            level: "レベル ★★★",
+            text: "「〇〇公園に珍しい動物が出現！」（実際は他県の写真）",
+            choices: ["本当", "ウソ", "わからない（保留）"],
+            answer: 1, // ウソ
+            explanation: "ネット上の写真は、別の場所や過去のものを使い回していることがあります。画像検索などで「いつ、どこで撮られたか」を確認するのが有効です。",
+            points: [
+                "写真は本当にそこで撮られた？",
+                "撮影日はいつ？",
+                "他のニュースでも同じ写真を使っていない？"
+            ]
+        },
+        {
+            level: "レベル ★★★",
+            text: "「専門家が“絶対安全”と言っています」",
+            choices: ["本当", "要注意", "わからない（保留）"],
+            answer: 1, // 要注意
+            explanation: "「専門家」という言葉だけで信用してはいけません。どの分野の専門家か、名前はあるかを確認する必要があります。",
+            points: [
+                "どの分野の専門家？",
+                "名前は出ている？",
+                "「絶対」という言葉は科学的ではないことが多い"
+            ]
+        },
+        {
+            level: "レベル ★★★★",
+            text: "「昨日のニュースで有名人が問題発言！」（実は一部を切り取った発言）",
+            choices: ["本当", "ウソ（一部だけ本当）", "わからない（保留）"],
+            answer: 1, // ウソ（一部だけ本当）
+            explanation: "文脈を切り取ると、全く違う意味に聞こえることがあります。前後の会話や全文を確認しましょう。",
+            points: [
+                "前後の文脈は？",
+                "全体を見ると意味は変わらない？",
+                "意図的に怒らせるように作られていない？"
+            ]
+        },
+        {
+            level: "レベル ★★★★",
+            text: "「この方法をやれば必ず 100 点が取れる！」",
+            choices: ["本当", "あやしい", "わからない（保留）"],
+            answer: 1, // あやしい
+            explanation: "「必ず」「100%」「誰でも」といった断定的な表現がある情報は、誇大広告やフェイクの可能性が高いです。",
+            points: [
+                "「必ず」という言葉に注意",
+                "客観的なデータはある？",
+                "本当に誰でもできる？"
+            ]
+        },
+        {
+            level: "レベル ★★★★★",
+            text: "「AI が人間の仕事を全部うばうことが決定！」",
+            choices: ["本当", "ウソ", "断定できない"],
+            answer: 2, // 断定できない
+            explanation: "未来のことは誰にも「決定」できません。未来の予測を「決定事項」のように話すのはフェイクの常套手段です。予測と事実を区別しましょう。",
+            points: [
+                "誰が決定した？",
+                "未来の話を断定していない？",
+                "「予測」と「事実」の違いは？"
+            ]
+        }
+    ];
+
+    // ② 状態管理
+    let currentQuestionIndex = 0;
+    let score = 0;
+
+    // DOM 要素の取得
+    const questionEl = document.getElementById("question");
+    const choicesEl = document.getElementById("choices");
+    const levelEl = document.getElementById("level");
+    const explanationArea = document.getElementById("explanation-area");
+    const resultTitle = document.getElementById("result-title");
+    const explanationText = document.getElementById("explanation-text");
+    const pointsList = document.getElementById("points-list");
+    const nextBtn = document.getElementById("nextBtn");
+    const quizArea = document.getElementById("quiz-area");
+    const resultArea = document.getElementById("result-area");
+
+    // ③ 基本ロジック
+    function showQuestion() {
+        const q = questions[currentQuestionIndex];
+        
+        // 問題文とレベルの表示
+        questionEl.textContent = q.text;
+        levelEl.textContent = q.level;
+        
+        // 解説エリアのリセットと非表示
+        explanationArea.style.display = "none";
+        nextBtn.style.display = "none";
+        
+        // 選択肢ボタンの生成
+        choicesEl.innerHTML = "";
+        q.choices.forEach((choice, index) => {
+            const btn = document.createElement("button");
+            btn.textContent = choice;
+            btn.classList.add("choice-btn");
+            btn.onclick = () => checkAnswer(index, btn);
+            choicesEl.appendChild(btn);
+        });
+    }
+
+    function checkAnswer(selectedIndex, selectedBtn) {
+        const q = questions[currentQuestionIndex];
+        const buttons = document.querySelectorAll(".choice-btn");
+
+        // 全ボタンを無効化（連打防止）
+        buttons.forEach(btn => btn.disabled = true);
+
+        // 正解判定
+        if (selectedIndex === q.answer) {
+            selectedBtn.classList.add("correct");
+            resultTitle.textContent = "正解！";
+            resultTitle.style.color = "#4caf50";
+            score++;
+        } else {
+            selectedBtn.classList.add("wrong");
+            // 正解のボタンも緑色にする
+            buttons[q.answer].classList.add("correct");
+            resultTitle.textContent = "残念…";
+            resultTitle.style.color = "#f44336";
+        }
+
+        // 解説の表示
+        explanationText.textContent = q.explanation;
+        pointsList.innerHTML = "";
+        q.points.forEach(point => {
+            const li = document.createElement("li");
+            li.textContent = point;
+            pointsList.appendChild(li);
+        });
+        
+        explanationArea.style.display = "block";
+        nextBtn.style.display = "inline-block";
+    }
+
+    nextBtn.onclick = () => {
+        currentQuestionIndex++;
+        if (currentQuestionIndex < questions.length) {
+            showQuestion();
+        } else {
+            showResult();
+        }
+    };
+
+    function showResult() {
+        quizArea.style.display = "none";
+        resultArea.style.display = "block";
+        document.getElementById("final-score").textContent = score;
+        document.getElementById("total-questions").textContent = questions.length;
+
+        const commentEl = document.getElementById("comment");
+        const percentage = (score / questions.length) * 100;
+
+        if (percentage === 100) {
+            commentEl.textContent = "素晴らしい！あなたはフェイクニュースマスターです！🎉";
+        } else if (percentage >= 70) {
+            commentEl.textContent = "いい調子！情報の真偽を見極める力がありますね。👍";
+        } else {
+            commentEl.textContent = "もう少し！「考えるポイント」を思い出して再挑戦しましょう。💪";
+        }
+    }
+
+    // 初期表示
+    showQuestion();
+
+</script>
+
+</body>
+</html>
