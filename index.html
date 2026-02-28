@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>バーコード提出物チェッカー</title>
+  <style>
+    :root {
+      --bg-main: #f0f4f8;
+      --header-from: #2b6cb0;
+      --header-to: #3182ce;
+      
+      --sub-bg: #c6f6d5;
+      --sub-text: #22543d;
+      --sub-border: #48bb78;
+      
+      --for-bg: #fed7d7;
+      --for-text: #742a2a;
+      --for-border: #fc8181;
+      
+      --abs-bg: #e9d8fd;
+      --abs-text: #553c9a;
+      --abs-border: #b794f4;
+
+      --un-bg: #e2e8f0;
+      --un-text: #4a5568;
+      --un-border: #a0aec0;
+      
+      --tot-bg: #bee3f8;
+      --tot-text: #2c5282;
+    }
+
+    html, body {
+      margin: 0; padding: 0;
+      width: 100%; height: 100%;
+      overflow: hidden;
+      font-family: -apple-system, BlinkMacSystemFont, 'Hiragino Sans', 'Meiryo', sans-serif;
+      background: var(--bg-main);
+      color: #333;
+    }
+
+    .hidden { display: none !important; }
+
+    /* Header */
+    .app-header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      height: 56px;
+      z-index: 100;
+      background: linear-gradient(to right, var(--header-from), var(--header-to));
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 16px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+    #headerDate { font-size: 0.85rem; font-weight: bold; }
+    .header-title { font-size: 1.1rem; font-weight: bold; flex-grow: 1; text-align: center; }
+    .item-select {
+      padding: 4px; border-radius: 4px; border: none; font-size: 0.9rem;
+      max-width: 100px; background: rgba(255,255,255,0.9);
+    }
+
+    /* Main Content */
+    .main-content {
+      position: fixed;
+      top: 56px; bottom: 60px;
+      left: 0; right: 0;
+      overflow-y: auto;
+      overflow-x: hidden;
+      -webkit-overflow-scrolling: touch;
+    }
+    .page {
+      display: none;
+      padding: 16px;
+      min-height: 100%;
+      box-sizing: border-box;
+    }
+    .page.active { display: block; }
+
+    /* Scanner */
+    .camera-wrapper {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 4/3;
+      border-radius: 12px;
+      overflow: hidden;
+      background: #000;
+      margin-bottom: 16px;
+    }
+    .viewport { width: 100%; height: 100%; position: relative; }
+    .viewport video {
+      object-fit: cover;
+      width: 100% !important;
+      height: 100% !important;
+    }
+    /* html5-qrcode内部要素の上書き */
+    #reader > * { border: none !important; }
+    #reader img { display: none; }
+
+    .start-scan-wrapper {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(0,0,0,0.7);
+      z-index: 20;
+    }
+    .start-scan-wrapper button {
+      padding: 16px 24px;
+      font-size: 1.2rem;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+    
+    .scan-overlay {
+      position: absolute;
+      top: 15%; left: 10%; right: 10%; bottom: 15%;
+      pointer-events: none;
+      z-index: 5;
+    }
+    .corner { position: absolute; width: 20px; height: 20px; border-color: #fff; border-style: solid; }
+    .corner.tl { top: 0; left: 0; border-width: 3px 0 0 3px; }
+    .corner.tr { top: 0; right: 0; border-width: 3px 3px 0 0; }
+    .corner.bl { bottom: 0; left: 0; border-width: 0 0 3px 3px; }
+    .corner.br { bottom: 0; right: 0; border-width: 0 3px 3px 0; }
+    .hint-text {
+      position: absolute; bottom: -30px; left: 0; right: 0;
+      text-align: center; color: rgba(255,255,255,0.8); font-size: 0.8rem;
+    }
+
+    /* Scan Result Flash */
+    #scanResult {
+      position: absolute;
+      top: 50%; left: 50%;
+      transform: translate(-50%, -50%);
+      padding: 16px; border-radius: 8px;
+      color: #fff; font-weight: bold; text-align: center;
+      white-space: pre-wrap; z-index: 30; width: 80%;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+    .scan-result.ok { background: rgba(72, 187, 120, 0.95); }
+    .scan-result.warn { background: rgba(237, 137, 54, 0.95); }
+    .scan-result.err { background: rgba(245, 101, 101, 0.95); }
+
+    /* Stats */
+    .stat-summary {
+      display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+    }
+    .stat-box {
+      padding: 12px; border-radius: 8px; text-align: center; font-weight: bold; font-size: 1.1rem;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .badge-submitted.stat-box { background: var(--sub-bg); color: var(--sub-text); }
+    .badge-forgotten.stat-box { background: var(--for-bg); color: var(--for-text); }
+    .badge-absent.stat-box   { background: var(--abs-bg); color: var(--abs-text); }
+    .badge-unsubmitted.stat-box { background: var(--tot-bg); color: var(--tot-text); }
+    
+    /* List Page */
+    .list-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+    .list-header h2 { font-size: 1.2rem; margin: 0; }
+    .btn-refresh { padding: 6px 12px; border-radius: 6px; border: none; background: #e2e8f0; font-weight: bold; cursor: pointer; }
+
+    /* Student Card */
+    .student-list { padding-bottom: 20px; }
+    .student-card {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 12px; background: #fff; border-radius: 8px; margin-bottom: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      border-left: 5px solid var(--un-border);
+      transition: transform 0.1s;
+      cursor: pointer;
+    }
+    .student-card:active { transform: scale(0.98); }
+    
+    .student-card.submitted { border-left-color: var(--sub-border); }
+    .student-card.forgotten { border-left-color: var(--for-border); }
+    .student-card.absent { border-left-color: var(--abs-border); }
+    .student-card.unsubmitted { border-left-color: var(--un-border); }
+
+    .student-number { width: 40px; font-weight: bold; color: #718096; }
+    .student-name { flex-grow: 1; font-weight: bold; font-size: 1.05rem; }
+    .student-time { font-size: 0.8rem; color: #a0aec0; margin-right: 12px; }
+    
+    .status-badge {
+      padding: 4px 8px; border-radius: 12px; font-size: 0.8rem; font-weight: bold;
+    }
+    .badge-submitted { background: var(--sub-bg); color: var(--sub-text); }
+    .badge-forgotten { background: var(--for-bg); color: var(--for-text); }
+    .badge-absent { background: var(--abs-bg); color: var(--abs-text); }
+    .badge-unsubmitted { background: var(--un-bg); color: var(--un-text); }
+
+    /* Tab Bar */
+    .tab-bar {
+      position: fixed; bottom: 0; left: 0; right: 0; height: 60px;
+      background: #fff; border-top: 1px solid #e2e8f0;
+      display: flex; z-index: 100;
+    }
+    .tab-btn {
+      flex: 1; border: none; background: transparent;
+      font-size: 1rem; font-weight: bold; color: #a0aec0; cursor: pointer;
+    }
+    .tab-btn.active { color: var(--header-to); }
+
+    /* Modal */
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5); z-index: 200;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .modal-box {
+      background: #fff; width: 88%; max-width: 360px; border-radius: 16px;
+      padding: 24px; box-sizing: border-box; text-align: center;
+    }
+    .modal-box h3 { margin: 0 0 8px 0; }
+    .modal-box p { margin: 0 0 20px 0; color: #718096; }
+    .modal-buttons { display: flex; flex-direction: column; gap: 12px; margin-bottom: 20px; }
+    
+    .btn { padding: 12px; border-radius: 8px; border: none; font-size: 1.1rem; font-weight: bold; color: #fff; cursor: pointer; }
+    .btn-submit { background: var(--sub-border); }
+    .btn-forget { background: var(--for-border); }
+    .btn-absent { background: var(--abs-border); }
+    .btn-cancel { background: #e2e8f0; color: #4a5568; width: 100%; }
+
+    /* Toast */
+    .toast {
+      position: fixed; bottom: 76px; left: 50%; transform: translateX(-50%);
+      background: rgba(45, 55, 72, 0.95); color: #fff; padding: 10px 20px;
+      border-radius: 20px; z-index: 300; font-weight: bold; white-space: nowrap;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+    }
+
+    /* Settings Page */
+    .settings-section {
+      background: #fff; border-radius: 12px; padding: 16px; margin-bottom: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .settings-section h3 { margin: 0 0 12px 0; font-size: 1rem; color: #4a5568; }
+    .settings-row {
+      display: flex; align-items: center; gap: 8px; margin-bottom: 8px;
+    }
+    .settings-row input[type="text"] {
+      flex: 1; padding: 8px; border: 1px solid #e2e8f0; border-radius: 6px; font-size: 0.9rem;
+    }
+    .settings-row button, .settings-actions button {
+      padding: 8px 14px; border-radius: 6px; border: none; background: var(--header-to);
+      color: #fff; font-weight: bold; font-size: 0.9rem; cursor: pointer;
+    }
+    .settings-actions { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; }
+    .btn-danger { background: var(--for-border) !important; }
+    .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .tag {
+      background: var(--bg-main); border: 1px solid #e2e8f0; border-radius: 16px;
+      padding: 4px 10px; font-size: 0.85rem; display: flex; align-items: center; gap: 6px;
+    }
+    .tag-remove { cursor: pointer; color: #a0aec0; font-weight: bold; }
+    .tag-remove:hover { color: var(--for-border); }
+    textarea.import-area {
+      width: 100%; min-height: 80px; border: 1px solid #e2e8f0; border-radius: 6px;
+      padding: 8px; font-size: 0.85rem; font-family: monospace; box-sizing: border-box; resize: vertical;
+    }
+    .help-text { font-size: 0.78rem; color: #a0aec0; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <header class="app-header">
+    <div id="headerDate"></div>
+    <div class="header-title">📋 提出物チェッカー</div>
+    <select id="itemSelect" class="item-select"></select>
+  </header>
+
+  <main class="main-content">
+    <!-- スキャンページ -->
+    <section id="scanPage" class="page active">
+      <div class="camera-wrapper">
+        <div id="reader" class="viewport"></div>
+        <div id="startScanBtnWrapper" class="start-scan-wrapper">
+          <button class="btn btn-submit" onclick="startScanner()">📷 タップしてカメラ起動</button>
+          <div style="color:#fff; margin-top:10px; font-size:0.8rem;">※カメラの許可が必要です</div>
+        </div>
+        <div class="scan-overlay">
+          <div class="corner tl"></div><div class="corner tr"></div>
+          <div class="corner bl"></div><div class="corner br"></div>
+          <div class="hint-text">バーコード・QRコードを枠内に合わせてください</div>
+        </div>
+        <div id="scanResult" class="hidden"></div>
+      </div>
+      
+      <div class="stat-summary">
+        <div class="stat-box badge-submitted">提出: <span id="statSubmitted">0</span></div>
+        <div class="stat-box badge-forgotten">忘れ: <span id="statForgotten">0</span></div>
+        <div class="stat-box badge-absent">休み: <span id="statAbsent">0</span></div>
+        <div class="stat-box badge-unsubmitted">総計: <span id="statTotal">0</span></div>
+      </div>
+    </section>
+
+    <!-- 提出リストページ -->
+    <section id="listPage" class="page">
+      <div class="list-header">
+        <h2>当日提出状況</h2>
+        <button class="btn-refresh" onclick="loadTodayStatus()">🔄 更新</button>
+      </div>
+      <div id="studentList" class="student-list">読み込み中...</div>
+    </section>
+
+    <!-- 設定ページ -->
+    <section id="settingsPage" class="page">
+      <!-- 提出物マスタ -->
+      <div class="settings-section">
+        <h3>📝 提出物マスタ</h3>
+        <div class="settings-row">
+          <input type="text" id="newItemName" placeholder="提出物名を入力">
+          <button onclick="addItem()">追加</button>
+        </div>
+        <div id="itemTagList" class="tag-list"></div>
+      </div>
+
+      <!-- 生徒マスタ -->
+      <div class="settings-section">
+        <h3>👤 生徒マスタ</h3>
+        <p class="help-text">CSV形式でインポート（1行1人）：<br>出席番号,氏名,バーコードID<br>例: 1,山田太郎,1234567890</p>
+        <textarea id="studentImportArea" class="import-area" placeholder="1,山田太郎,1234567890&#10;2,鈴木花子,0987654321"></textarea>
+        <div class="settings-actions">
+          <button onclick="importStudents()">CSVインポート</button>
+          <button onclick="addSingleStudent()">1人追加</button>
+        </div>
+        <div id="studentTagList" class="tag-list" style="margin-top:12px;"></div>
+      </div>
+
+      <!-- 1人追加フォーム -->
+      <div class="settings-section" id="singleStudentForm" style="display:none;">
+        <h3>生徒を1人追加</h3>
+        <div class="settings-row">
+          <input type="text" id="newStudentNum" placeholder="出席番号" style="max-width:80px;">
+          <input type="text" id="newStudentName" placeholder="氏名" style="flex:1;">
+          <input type="text" id="newStudentBarcode" placeholder="バーコードID" style="flex:1;">
+        </div>
+        <div class="settings-actions">
+          <button onclick="saveSingleStudent()">保存</button>
+          <button onclick="cancelSingleStudent()" style="background:#e2e8f0;color:#4a5568;">キャンセル</button>
+        </div>
+      </div>
+
+      <!-- データ操作 -->
+      <div class="settings-section">
+        <h3>💾 データ操作</h3>
+        <div class="settings-actions">
+          <button onclick="exportData()">📤 データエクスポート</button>
+          <button onclick="document.getElementById('importFile').click()">📥 データインポート</button>
+          <input type="file" id="importFile" accept=".json" style="display:none" onchange="importData(event)">
+          <button class="btn-danger" onclick="clearTodayData()">🗑 本日データ削除</button>
+        </div>
+        <p class="help-text">エクスポート／インポートでバックアップや端末間の移行ができます。</p>
+      </div>
+    </section>
+  </main>
+
+  <nav class="tab-bar">
+    <button id="tabScan" class="tab-btn active" onclick="switchTab('scan')">📷 スキャン</button>
+    <button id="tabList" class="tab-btn" onclick="switchTab('list')">📋 当日の提出</button>
+    <button id="tabSettings" class="tab-btn" onclick="switchTab('settings')">⚙️ 設定</button>
+  </nav>
+
+  <!-- ステータス変更モーダル -->
+  <div id="statusModal" class="modal-overlay hidden">
+    <div class="modal-box">
+      <h3 id="modalStudentName"></h3>
+      <p id="modalCurrentStatus"></p>
+      <div class="modal-buttons">
+        <button class="btn btn-submit" onclick="changeStatus('提出')">✅ 提出</button>
+        <button class="btn btn-forget" onclick="changeStatus('忘れ')">❌ 忘れ</button>
+        <button class="btn btn-absent" onclick="changeStatus('休み')">🏠 休み</button>
+      </div>
+      <button class="btn btn-cancel" onclick="closeModal()">キャンセル</button>
+    </div>
+  </div>
+
+  <div id="toast" class="toast hidden"></div>
+
+  <script src="https://unpkg.com/html5-qrcode"></script>
+  <script>
+  // =============================================
+  // ストレージキー定義
+  // =============================================
+  const KEY_STUDENTS = 'checker_students';
+  const KEY_ITEMS    = 'checker_items';
+  const KEY_RECORDS  = 'checker_records'; // {date_itemId: {studentNumber: {status, timestamp}}}
+
+  // =============================================
+  // アプリ状態
+  // =============================================
+  let currentTab      = 'scan';
+  let students        = [];
+  let items           = [];
+  let todayStatus     = [];
+  let selectedItem    = null;
+  let today           = '';
+  let isScanning      = false;
+  let lastScanned     = '';
+  let lastScannedTime = 0;
+  const SCAN_COOLDOWN = 2500;
+  let modalStudent    = null;
+  let scanResultTimer = null;
+  let toastTimer      = null;
+  let html5QrCode     = null;
+
+  // =============================================
+  // LocalStorage ヘルパー
+  // =============================================
+  function lsGet(key, def = null) {
+    try { const v = localStorage.getItem(key); return v !== null ? JSON.parse(v) : def; }
+    catch(e) { return def; }
+  }
+  function lsSet(key, val) {
+    try { localStorage.setItem(key, JSON.stringify(val)); } catch(e) {}
+  }
+
+  // =============================================
+  // GAS互換API（ローカルデータ操作）
+  // =============================================
+  function getStudents() {
+    return lsGet(KEY_STUDENTS, []);
+  }
+
+  function getItems() {
+    return lsGet(KEY_ITEMS, [
+      { id: 'item1', name: '宿題', active: true },
+      { id: 'item2', name: '連絡帳', active: true }
+    ]).filter(i => i.active !== false);
+  }
+
+  function getTodayStatus(dateStr, itemId) {
+    const sts = getStudents();
+    const records = lsGet(KEY_RECORDS, {});
+    const key = `${dateStr}__${itemId}`;
+    const dayRec = records[key] || {};
+
+    return sts.map(s => {
+      const rec = dayRec[String(s.number)];
+      return {
+        number: s.number,
+        name: s.name,
+        status: rec ? rec.status : '未提出',
+        timestamp: rec ? rec.timestamp : ''
+      };
+    });
+  }
+
+  function recordByBarcode(barcodeId, itemId, dateStr) {
+    const sts = getStudents();
+    const student = sts.find(s => String(s.barcodeId) === String(barcodeId));
+    if (!student) return { success: false, message: '未登録のバーコードです' };
+
+    const records = lsGet(KEY_RECORDS, {});
+    const key = `${dateStr}__${itemId}`;
+    if (!records[key]) records[key] = {};
+
+    const alreadyExisted = !!records[key][String(student.number)];
+    records[key][String(student.number)] = {
+      status: '提出',
+      timestamp: formatDisplayDateTime(new Date())
+    };
+    lsSet(KEY_RECORDS, records);
+    return { success: true, alreadyExisted };
+  }
+
+  function updateStatus(studentNumber, itemId, dateStr, newStatus) {
+    const sts = getStudents();
+    const student = sts.find(s => String(s.number) === String(studentNumber));
+    if (!student) return { success: false, message: '生徒が見つかりません' };
+
+    const records = lsGet(KEY_RECORDS, {});
+    const key = `${dateStr}__${itemId}`;
+    if (!records[key]) records[key] = {};
+    records[key][String(studentNumber)] = {
+      status: newStatus,
+      timestamp: newStatus === '休み' ? '' : formatDisplayDateTime(new Date())
+    };
+    lsSet(KEY_RECORDS, records);
+    return { success: true };
+  }
+
+  // =============================================
+  // 初期化
+  // =============================================
+  window.addEventListener('load', () => {
+    today = getTodayStr();
+    document.getElementById('headerDate').textContent = formatDisplayDate(today);
+    loadMasterData();
+    loadTodayStatus();
+  });
+
+  function loadMasterData() {
+    students = getStudents();
+    items = getItems();
+    buildItemSelect();
+    renderSettingsStudents();
+    renderSettingsItems();
+  }
+
+  function buildItemSelect() {
+    const select = document.getElementById('itemSelect');
+    select.innerHTML = '';
+    items.forEach(item => {
+      const opt = document.createElement('option');
+      opt.value = item.id;
+      opt.textContent = item.name;
+      select.appendChild(opt);
+    });
+    selectedItem = items.length > 0 ? items[0] : null;
+    select.addEventListener('change', (e) => {
+      selectedItem = items.find(i => String(i.id) === e.target.value) || null;
+      loadTodayStatus();
+    });
+  }
+
+  // =============================================
+  // タブ切替
+  // =============================================
+  function switchTab(tab) {
+    document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+
+    if (tab === 'scan') {
+      document.getElementById('scanPage').classList.add('active');
+      document.getElementById('tabScan').classList.add('active');
+    } else if (tab === 'list') {
+      document.getElementById('listPage').classList.add('active');
+      document.getElementById('tabList').classList.add('active');
+      stopScanner();
+      loadTodayStatus();
+    } else if (tab === 'settings') {
+      document.getElementById('settingsPage').classList.add('active');
+      document.getElementById('tabSettings').classList.add('active');
+      stopScanner();
+      renderSettingsStudents();
+      renderSettingsItems();
+    }
+    currentTab = tab;
+  }
+
+  // =============================================
+  // カメラ
+  // =============================================
+  async function startScanner() {
+    if (isScanning) return;
+    document.getElementById('startScanBtnWrapper').classList.add('hidden');
+
+    if (!html5QrCode) html5QrCode = new Html5Qrcode("reader");
+
+    try {
+      await html5QrCode.start(
+        { facingMode: "environment" },
+        { fps: 10 },
+        (decodedText) => handleDetected(decodedText),
+        () => {}
+      );
+      isScanning = true;
+    } catch (err) {
+      showScanResult('err', 'カメラの起動に失敗しました。\nブラウザの権限設定を確認してください。');
+      document.getElementById('startScanBtnWrapper').classList.remove('hidden');
+    }
+  }
+
+  function stopScanner() {
+    if (isScanning && html5QrCode) {
+      html5QrCode.stop().then(() => {
+        isScanning = false;
+        document.getElementById('startScanBtnWrapper').classList.remove('hidden');
+      }).catch(() => {});
+    }
+  }
+
+  function handleDetected(code) {
+    const now = Date.now();
+    if (code === lastScanned && (now - lastScannedTime) < SCAN_COOLDOWN) return;
+    lastScanned = code;
+    lastScannedTime = now;
+    onBarcodeDetected(code);
+  }
+
+  // =============================================
+  // バーコード処理
+  // =============================================
+  function onBarcodeDetected(barcodeId) {
+    playBeep();
+    if (!selectedItem) { showScanResult('err', '提出物を選択してください'); return; }
+
+    const student = students.find(s => String(s.barcodeId) === String(barcodeId));
+    if (!student) { showScanResult('err', '⚠ 未登録のバーコード\n' + barcodeId); return; }
+
+    showScanResult('ok', '✅ ' + student.name + '\n' + selectedItem.name);
+    const res = recordByBarcode(barcodeId, selectedItem.id, today);
+    if (res.success) {
+      if (res.alreadyExisted) showToast(student.name + ' はすでに記録済みです');
+      updateTodayStatusLocal(student.number, '提出');
+      updateStats();
+    } else {
+      showScanResult('err', '記録失敗: ' + res.message);
+    }
+  }
+
+  function showScanResult(type, msg) {
+    const el = document.getElementById('scanResult');
+    el.className = 'scan-result ' + type;
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    if (scanResultTimer) clearTimeout(scanResultTimer);
+    scanResultTimer = setTimeout(() => el.classList.add('hidden'), 2200);
+  }
+
+  function playBeep() {
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) return;
+      const ctx = new AudioContext();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, ctx.currentTime);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.2);
+    } catch(e) {}
+  }
+
+  // =============================================
+  // 提出リスト
+  // =============================================
+  function loadTodayStatus() {
+    if (!selectedItem) {
+      document.getElementById('studentList').textContent = '提出物を設定から追加してください';
+      return;
+    }
+    todayStatus = getTodayStatus(today, selectedItem.id);
+    renderStudentList();
+    updateStats();
+  }
+
+  function updateTodayStatusLocal(studentNumber, newStatus) {
+    let s = todayStatus.find(ts => String(ts.number) === String(studentNumber));
+    const nowTime = newStatus === '休み' ? '' : formatDisplayDateTime(new Date());
+    if (s) {
+      s.status = newStatus;
+      s.timestamp = nowTime;
+    } else {
+      const m = students.find(st => String(st.number) === String(studentNumber));
+      if (m) todayStatus.push({ number: m.number, name: m.name, status: newStatus, timestamp: nowTime });
+    }
+    if (currentTab === 'list') renderStudentList();
+  }
+
+  function renderStudentList() {
+    const listEl = document.getElementById('studentList');
+    if (!todayStatus || todayStatus.length === 0) {
+      listEl.textContent = '生徒が登録されていません（設定から追加）';
+      return;
+    }
+    const sorted = [...todayStatus].sort((a, b) => parseInt(a.number) - parseInt(b.number));
+    listEl.innerHTML = '';
+    sorted.forEach(s => {
+      const sc = statusToClass(s.status);
+      const bc = badgeClass(s.status);
+      const card = document.createElement('div');
+      card.className = `student-card ${sc}`;
+      card.onclick = () => openModal(s);
+      card.innerHTML = `
+        <span class="student-number">${s.number}</span>
+        <span class="student-name">${s.name}</span>
+        <span class="student-time">${s.timestamp || ''}</span>
+        <span class="status-badge ${bc}">${s.status}</span>
+      `;
+      listEl.appendChild(card);
+    });
+  }
+
+  function updateStats() {
+    const submitted = todayStatus.filter(s => s.status === '提出').length;
+    const absent    = todayStatus.filter(s => s.status === '休み').length;
+    const total     = students.length;
+    const forgotten = total - submitted - absent;
+    document.getElementById('statSubmitted').textContent = submitted;
+    document.getElementById('statForgotten').textContent = forgotten;
+    document.getElementById('statAbsent').textContent = absent;
+    document.getElementById('statTotal').textContent = total;
+  }
+
+  // =============================================
+  // ステータス変更モーダル
+  // =============================================
+  function openModal(student) {
+    modalStudent = student;
+    document.getElementById('modalStudentName').textContent = student.number + '番　' + student.name;
+    document.getElementById('modalCurrentStatus').textContent = '現在: ' + (student.status || '未提出');
+    document.getElementById('statusModal').classList.remove('hidden');
+  }
+
+  function closeModal() {
+    document.getElementById('statusModal').classList.add('hidden');
+    modalStudent = null;
+  }
+
+  function changeStatus(newStatus) {
+    if (!modalStudent || !selectedItem) return;
+    const res = updateStatus(modalStudent.number, selectedItem.id, today, newStatus);
+    closeModal();
+    if (res.success) {
+      updateTodayStatusLocal(modalStudent.number, newStatus);
+      updateStats();
+      showToast(modalStudent.name + ' → ' + newStatus);
+    } else {
+      showToast('更新失敗: ' + res.message);
+    }
+  }
+
+  // =============================================
+  // 設定ページ
+  // =============================================
+
+  // --- 提出物 ---
+  function renderSettingsItems() {
+    const allItems = lsGet(KEY_ITEMS, []);
+    const listEl = document.getElementById('itemTagList');
+    listEl.innerHTML = '';
+    allItems.forEach((item, idx) => {
+      const tag = document.createElement('div');
+      tag.className = 'tag';
+      tag.innerHTML = `${item.name} <span class="tag-remove" onclick="removeItem(${idx})">×</span>`;
+      listEl.appendChild(tag);
+    });
+  }
+
+  function addItem() {
+    const input = document.getElementById('newItemName');
+    const name = input.value.trim();
+    if (!name) return;
+    const allItems = lsGet(KEY_ITEMS, []);
+    allItems.push({ id: 'item_' + Date.now(), name, active: true });
+    lsSet(KEY_ITEMS, allItems);
+    input.value = '';
+    loadMasterData();
+    loadTodayStatus();
+  }
+
+  function removeItem(idx) {
+    if (!confirm('この提出物を削除しますか？')) return;
+    const allItems = lsGet(KEY_ITEMS, []);
+    allItems.splice(idx, 1);
+    lsSet(KEY_ITEMS, allItems);
+    loadMasterData();
+    loadTodayStatus();
+  }
+
+  // --- 生徒 ---
+  function renderSettingsStudents() {
+    const sts = getStudents();
+    const listEl = document.getElementById('studentTagList');
+    listEl.innerHTML = '';
+    sts.forEach((s, idx) => {
+      const tag = document.createElement('div');
+      tag.className = 'tag';
+      tag.innerHTML = `${s.number}番 ${s.name} <span class="tag-remove" onclick="removeStudent(${idx})">×</span>`;
+      listEl.appendChild(tag);
+    });
+  }
+
+  function importStudents() {
+    const text = document.getElementById('studentImportArea').value.trim();
+    if (!text) return;
+    const lines = text.split('\n');
+    const existing = getStudents();
+    let added = 0, skipped = 0;
+    lines.forEach(line => {
+      const parts = line.split(',').map(p => p.trim());
+      if (parts.length < 3) { skipped++; return; }
+      const [number, name, barcodeId] = parts;
+      if (!number || !name || !barcodeId) { skipped++; return; }
+      const dup = existing.find(s => String(s.number) === String(number) || String(s.barcodeId) === String(barcodeId));
+      if (dup) { skipped++; return; }
+      existing.push({ number, name, barcodeId, note: '' });
+      added++;
+    });
+    lsSet(KEY_STUDENTS, existing);
+    document.getElementById('studentImportArea').value = '';
+    showToast(`${added}名追加、${skipped}件スキップ`);
+    loadMasterData();
+    loadTodayStatus();
+  }
+
+  function addSingleStudent() {
+    document.getElementById('singleStudentForm').style.display = 'block';
+  }
+
+  function cancelSingleStudent() {
+    document.getElementById('singleStudentForm').style.display = 'none';
+  }
+
+  function saveSingleStudent() {
+    const number    = document.getElementById('newStudentNum').value.trim();
+    const name      = document.getElementById('newStudentName').value.trim();
+    const barcodeId = document.getElementById('newStudentBarcode').value.trim();
+    if (!number || !name || !barcodeId) { showToast('全項目を入力してください'); return; }
+    const existing = getStudents();
+    const dup = existing.find(s => String(s.number) === String(number) || String(s.barcodeId) === String(barcodeId));
+    if (dup) { showToast('同じ番号またはバーコードが既に登録されています'); return; }
+    existing.push({ number, name, barcodeId, note: '' });
+    lsSet(KEY_STUDENTS, existing);
+    document.getElementById('newStudentNum').value = '';
+    document.getElementById('newStudentName').value = '';
+    document.getElementById('newStudentBarcode').value = '';
+    cancelSingleStudent();
+    showToast(name + ' を追加しました');
+    loadMasterData();
+    loadTodayStatus();
+  }
+
+  function removeStudent(idx) {
+    if (!confirm('この生徒を削除しますか？')) return;
+    const sts = getStudents();
+    sts.splice(idx, 1);
+    lsSet(KEY_STUDENTS, sts);
+    loadMasterData();
+    loadTodayStatus();
+  }
+
+  // --- データ操作 ---
+  function exportData() {
+    const data = {
+      students: lsGet(KEY_STUDENTS, []),
+      items:    lsGet(KEY_ITEMS, []),
+      records:  lsGet(KEY_RECORDS, {})
+    };
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `checker_backup_${today.replace(/\//g, '')}.json`;
+    a.click();
+  }
+
+  function importData(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const data = JSON.parse(e.target.result);
+        if (data.students) lsSet(KEY_STUDENTS, data.students);
+        if (data.items)    lsSet(KEY_ITEMS, data.items);
+        if (data.records)  lsSet(KEY_RECORDS, data.records);
+        showToast('インポート完了');
+        loadMasterData();
+        loadTodayStatus();
+      } catch(err) {
+        showToast('インポート失敗: ファイルが不正です');
+      }
+    };
+    reader.readAsText(file);
+    event.target.value = '';
+  }
+
+  function clearTodayData() {
+    if (!confirm(`本日（${formatDisplayDate(today)}）の提出データを全て削除しますか？`)) return;
+    const records = lsGet(KEY_RECORDS, {});
+    items.forEach(item => {
+      delete records[`${today}__${item.id}`];
+    });
+    lsSet(KEY_RECORDS, records);
+    showToast('本日データを削除しました');
+    loadTodayStatus();
+  }
+
+  // =============================================
+  // Toast / ユーティリティ
+  // =============================================
+  function showToast(msg) {
+    const el = document.getElementById('toast');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.add('hidden'), 2000);
+  }
+
+  function getTodayStr() {
+    const d = new Date();
+    return `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+  }
+
+  function formatDisplayDate(str) {
+    const parts = str.split('/');
+    return `${parts[0]}年${parseInt(parts[1])}月${parseInt(parts[2])}日`;
+  }
+
+  function formatDisplayDateTime(d) {
+    return `${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+  }
+
+  function statusToClass(status) {
+    if (status === '提出') return 'submitted';
+    if (status === '忘れ') return 'forgotten';
+    if (status === '休み') return 'absent';
+    return 'unsubmitted';
+  }
+
+  function badgeClass(status) {
+    if (status === '提出') return 'badge-submitted';
+    if (status === '忘れ') return 'badge-forgotten';
+    if (status === '休み') return 'badge-absent';
+    return 'badge-unsubmitted';
+  }
+  </script>
+</body>
+</html>
